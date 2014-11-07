@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" type="text/css" href="http://ajax.googleapis.com/ajax/libs/jqueryui/1.8/themes/base/jquery-ui.css" />
+<link rel="stylesheet" type="text/css" href="interface.css" />
+<script type="text/javascript" src="http://cdn.robotwebtools.org/EaselJS/current/easeljs.min.js"></script>
+<script type="text/javascript" src="http://cdn.robotwebtools.org/EventEmitter2/current/eventemitter2.min.js"></script>
+<script type="text/javascript" src="http://cdn.robotwebtools.org/roslibjs/current/roslib.min.js"></script>
+<script type="text/javascript" src="http://cdn.robotwebtools.org/ros2djs/current/ros2d.min.js"></script>
+<script type="text/javascript" src="http://cdn.robotwebtools.org/nav2djs/current/nav2d.min.js"></script>
+<script type="text/javascript" src="http://cdn.robotwebtools.org/keyboardteleopjs/current/keyboardteleop.min.js"></script>
+<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.8.0/jquery.min.js"></script>
+<script type="text/javascript" type="text/javascript">
+var ros;
+var nav;
+var goal;
+var goalMarker;
+var humanArray = [];
+  /**
+   * Setup all visualization elements when the page is loaded.
+   */
+  function init() {
+    // Connect to ROS.
+    ros = new ROSLIB.Ros({
+      //url : 'ws://chester.cs.washington.edu:9090'
+      url : 'ws://localhost:9090'
+    });
+
+    // Create the main viewer.
+    var viewer = new ROS2D.Viewer({
+      divID : 'map',
+      width : 900,
+      height : 750
+    });
+
+    nav = new NAV2D.OccupancyGridClientNav({
+      ros : ros,
+      rootObject : viewer.scene,
+      viewer : viewer,
+      serverName : '/move_base'
+    });
+    var zoomview = new ROS2D.ZoomView({
+      rootObject : viewer.scene,
+      minScale : 0.0005
+    });    
+
+    // Initialize the teleop.
+    var teleop = new KEYBOARDTELEOP.Teleop({
+      ros : ros,
+      topic : '/mobile_base/commands/velocity'
+    });
+    teleop.scale = 1;
+    //console.log(teleop);
+  }
+  
+  function detectHumans() {
+    var detect = new ROSLIB.Topic({
+      ros : ros,
+      name : '/people_tracker_measurements',
+      messageType : 'people_msgs/PositionMeasurementArray',
+      throttle_rate : 1000
+    });
+
+    detect.subscribe(function(data) {
+      for (var i = 0; i < humanArray.length; i++) {
+        nav.rootObject.removeChild(humanArray[i]);
+      }
+      for(var i = 0; i < data.people.length;i++) {
+        if(data.people[i].reliability >= 0.25) {
+          createMarkers(data.people[i].pos,data.people[i].reliability);
+          console.log(data.people[i].pos);
+        }
+      } 
+    });
+    console.log("Clicked for humans");
+  }
+  function goHome() {
+    // make the cancel button enabled
+    document.getElementById("cancel").disabled = false;
+    document.getElementById("gohome").disabled = true;
+    var actionClient = new ROSLIB.ActionClient({
+      ros : ros,
+      actionName : 'move_base_msgs/MoveBaseAction',
+      serverName : '/move_base'
+    });
+    var pose = new ROSLIB.Pose({
+      position : new ROSLIB.Vector3(),
+      orientation : new ROSLIB.Quaternion()
+    });
+
+    // create a goal
+    goal = new ROSLIB.Goal({
+      actionClient : actionClient,
+      goalMessage : {
+        target_pose : {
+          header : {
+            frame_id : '/map'
+          },
+          pose : pose
+        }
+      }
+    });
+
+    console.log(goal);
+    goal.send();
+    
+    // create a marker for the goal
+    goalMarker = new ROS2D.NavigationArrow({
+      size : .5,
+      strokeSize : .01,
+      fillColor : createjs.Graphics.getRGB(52, 213, 52, 0.66),
+      pulse : true
+    });
+    goalMarker.x = 0;
+    goalMarker.y = 0;
+    goalMarker.rotation = 0;
+    goalMarker.scaleX = 1.0;
+    goalMarker.scaleY = 1.0;
+    nav.rootObject.addChild(goalMarker);
+
+    goal.on('result', function() {
+      nav.rootObject.removeChild(goalMarker);
+      document.getElementById("cancel").disabled = true;
+      document.getElementById("gohome").disabled = false;
+    });
+  }
+
+
+  function cancelHome() { 
+    goal.cancel();
+    nav.rootObject.removeChild(goalMarker);
+    
+    document.getElementById("cancel").disabled = true;
+    
+        
+  }
+  function createMarkers(pose,reliability) {
+    var goalMarker = new ROS2D.NavigationArrow({
+      size : .5,
+      strokeSize : 0.01,
+      fillColor : createjs.Graphics.getRGB(154, 64, 255, reliability),
+      pulse : true
+    });
+    goalMarker.x = -pose.x;
+    goalMarker.y = pose.y;
+    goalMarker.rotation = 0;
+    goalMarker.scaleX = 1.0;
+    goalMarker.scaleY = 1.0;
+    nav.rootObject.addChild(goalMarker);
+    humanArray[humanArray.length] = goalMarker;
+
+  }
+  
+</script>
+</head>
+
+<body onload="init()">
+  <h1>Simple Map Example</h1>
+  <div id="legend" float="right">
+    <h1> Legend </h1>
+  </div>
+  <div id="map"></div>
+ <button onclick="detectHumans()" type="button">Detect Humans</button>
+  <button onclick="goHome()" type="button" id="gohome">Go Home, Your Drunk!</button>
+  <button onclick="cancelHome()" type="button" id="cancel" disabled>Cancel Going Home</button>
+  <!--<div id="nav"></div>-->
+</body>
+</html>

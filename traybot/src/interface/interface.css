@@ -1,0 +1,97 @@
+#buttons {
+    position: fixed;
+    bottom: 17%;
+    left: 29%;
+}
+
+body {
+    font-family: Segoe UI;
+    background-color: #7d7d7d;
+    overflow-x: hidden;
+    overflow-y: hidden;
+}
+
+
+button {
+    font-family: Segoe UI;
+    border: 0 none;
+    border-radius: 2px 2px 2px 2px;
+    color: #FFFFFF;
+    cursor: pointer;
+    display: inline-block;
+    font-size: 16px;
+    line-height: 20px;
+    margin-bottom: 0;
+    margin-top: 10px;
+    padding: 7px 10px;
+    text-transform: none;
+    transition: all 0.3s ease 0s;
+    -moz-transition: all 0.3s ease 0s;
+    -webkit-transition: all 0.3s ease 0s;
+    text-align: center; /* DELETE WHEN WIDTH AUTO */
+    background: none repeat scroll 0 0 #2DB6CF;
+    color: white;
+    width: 200px;
+    height: 40px;
+}
+
+button:hover {
+      background: none repeat scroll 0 0 #444444;
+      color: white;
+}
+img {
+    border: 2px solid black;
+}
+
+#title {
+    font-family: Segoe UI;
+    position:fixed;
+    top: 5%;
+    left: 34%;
+}
+h2 {
+    font-size: 2.5em;
+    font-weight: lighter;
+    text-align: center;
+}
+h1 {
+    font-size: 4em;
+}
+#keys {
+    width:200px;
+    height: auto;
+}
+
+#keyDiv {
+    position: fixed;
+    left: 10%;
+    top: 44%;
+}
+#imgLegend {
+    width: 250px;
+    height: auto;
+}
+
+#legend {
+    position: fixed;
+    right: 10%;
+    top: 42%;
+}
+button:disabled {
+    background: none repeat scroll 0 0 #444444;
+}
+
+#legend {
+    position: fixe:
+}
+#directions {
+    position: fixed;
+    left: 9%;
+    top: 38%;
+    font-size: 1.2em;
+    text-align:center;
+}
+
+p {
+    margin: 0;
+}

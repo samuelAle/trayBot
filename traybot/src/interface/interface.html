@@ -23,15 +23,15 @@ var humanArray = [];
   function init() {
     // Connect to ROS.
     ros = new ROSLIB.Ros({
-      //url : 'ws://chester.cs.washington.edu:9090'
-      url : 'ws://localhost:9090'
+      url : 'ws://leatherback.cs.washington.edu:9090'
+      //url : 'ws://localhost:9090'
     });
 
     // Create the main viewer.
     var viewer = new ROS2D.Viewer({
       divID : 'map',
-      width : 900,
-      height : 750
+      width : screen.width,
+      height : screen.height
     });
 
     nav = new NAV2D.OccupancyGridClientNav({
@@ -156,14 +156,25 @@ var humanArray = [];
 </head>
 
 <body onload="init()">
-  <h1>Simple Map Example</h1>
-  <div id="legend" float="right">
-    <h1> Legend </h1>
+  <div id="title" >
+    <h1>Traybot Interface</h1>
+    <h2>By Team Tray</h2>
+  </div>
+  <div id="keyDiv">
+    <img id="keys" src="keyboardteleopjs-keys.png" alt="keys" >
+  </div>
+  <div id="directions">
+    <p>Double click on the map</p>
+    <p>or use WASD keys to move robot</p>
+  </div>
+  <div id="legend">
+    <img id="imgLegend" src="Legend.png" alt="legend!" >
+  </div>
+  <div id="buttons">
+    <button onclick="detectHumans()" type="button">Detect Humans</button>
+    <button onclick="goHome()" type="button" id="gohome">Go Home</button>
+    <button onclick="cancelHome()" type="button" id="cancel" disabled>Cancel Going Home</button>
   </div>
   <div id="map"></div>
- <button onclick="detectHumans()" type="button">Detect Humans</button>
-  <button onclick="goHome()" type="button" id="gohome">Go Home, Your Drunk!</button>
-  <button onclick="cancelHome()" type="button" id="cancel" disabled>Cancel Going Home</button>
-  <!--<div id="nav"></div>-->
 </body>
 </html>

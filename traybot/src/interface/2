@@ -5,15 +5,12 @@ import time
 import rospy
 import actionlib
 import tf
-import math
 import geometry_msgs.msg
 from geometry_msgs.msg import *
 from std_msgs.msg import *
 from visualization_msgs.msg import *
 from move_base_msgs.msg import *
 from people_msgs.msg import *
-from tf.transformations import *
-
 
 # Global fields, the large amount of them due to lack of
 # ability to put parameters in a callback function
@@ -32,29 +29,28 @@ scanTime = -1
 human_pose_subscriber = None
 humanPosition = None
 maxReliability = .5
-personCount = 6
+
 
 # Method first called to create all regional markers for
 # debugging purposes
 def createMarkers():
-    _createMarker(.5, 1.25, 0,0,1.6,0)
-    _createMarker(.5, -1.25, 1,0,1.6,0)
-    _createMarker(-1.25, 1.35, 2,0,1.6,0)
-    _createMarker(-1.25, -1.1, 3,0,1.6,0)
-    _createMarker(-3, 1.5, 4,0,1.6,0)
-    _createMarker(-3, -1, 5,0,1.6,0)
+#   _createMarker(.5, 1.25, 0)
+#   _createMarker(.5, -1.25, 1)
+#   _createMarker(-1.25, 1.35, 2)
+    _createMarker(-1.25, -1.1, 3)
+#    _createMarker(-3, 1.5, 4)
+    _createMarker(-3, -1, 5)
     print "published marker"
 
-def _createMarker(x, y, id,lifetime,scale,color):
-    #print "Creating marker and publisher"
+def _createMarker(x, y, id):
+    print "Creating marker and publisher"
     # create a grey box marker
     marker_publisher = rospy.Publisher('visualization_marker', Marker)
     marker = Marker(type=Marker.SPHERE, id=id,
                 pose=Pose(Point(x, y, 0), Quaternion(0, 0, 0, 1)),
-                scale=Vector3(scale,scale,scale),
+                scale=Vector3(1.6, 1.6, 1.6),
                 header=Header(frame_id='map'),
-                lifetime = rospy.Duration(lifetime),
-                color=ColorRGBA(color, 1.0, 0.0, 0.6))
+                color=ColorRGBA(0.0, 1.0, 0.0, 0.6))
     markers.append(marker)
     rospy.sleep(.5)
     marker_publisher.publish(marker) 
@@ -75,7 +71,6 @@ def _travelHere(pose,frameid):
     client.send_goal(goal)
     robot_pose_subscriber = rospy.Subscriber("/robot_pose", Pose, waitForResult) 
     if not reachedRegion:
-        print "Starting drive by scan"
         # state going to a region
         global human_pose_subscriber
         global maxReliability
@@ -86,22 +81,13 @@ def _travelHere(pose,frameid):
  
 # Method for populating data on a human position
 def driveByScan(data):
-    #print "scanning on drive"
+    print "scanning on drive"
     global maxReliability
-    global movingToPerson
-    global reachedRegion
-    for person in data.people:
-        if movingToPerson or reachedRegion:
-            return
-        global personCount    
+    for person in data.people:    
         pos = person.pos
         pose = Pose(Point(pos.x, pos.y, pos.z),Quaternion(0, 0, 0, 1))
         transformCoordinates(pose)
-        distance = calculateDistance(goal.target_pose.pose.position, pose.position)
-        print "distance: ", distance
-        _createMarker(pose.position.x, pose.position.y, personCount, 2,.5,1)
-        personCount += 1
-        if person.reliability > maxReliability and distance < 1.5:
+        if person.reliability > maxReliability and calculateDistance(goal.target_pose.pose.position, pose.position) < 1.5:
             global humanPosition
             maxReliability = person.reliability
             humanPosition = pose
@@ -112,7 +98,6 @@ def driveByScan(data):
 def waitForResult(data):
     global minDistance
     global goal
-    global movingToRegion
     # Robot's position data depends on if we are looking for a human or region
     # Human topic for position data: /robot_pose_ekf/odom_combined
     # Region topic for position data: /robot_pose
@@ -122,10 +107,8 @@ def waitForResult(data):
     goalPosition = goal.target_pose.pose.position
     distance = calculateDistance(currentPosition,goalPosition) 
     global client
-    if client.get_state() == 4 and movingToRegion:
-        client.send_goal(goal)
-        print "previous goal aborted: trying again"
-
+    if client.get_state() != 1:
+        print "client status: ", client.get_goal_status_text()
    # print "distance = ", distance, " ********** goal = (", goalPosition.x, ",", goalPosition.y, ",", goalPosition.z, ") ********* position = ", currentPosition.x, ",", currentPosition.y, ",", currentPosition.z, ")"
     if (distance < minDistance):
         # Robot has reached it's goal (under our rules of distance)
@@ -150,10 +133,11 @@ def waitForResult(data):
         else:
             # Region finding state
             global index
+            global movingToRegion
             global human_pose_subscriber
             human_pose_subscriber.unregister()
-            index = (index + 1) % 6
-            print "region reached, drive-by complete"
+            index = (index + 1) % 2
+            print "region reached"
             global humanPosition
             if humanPosition is not None:
                 print "humanPosition: ", humanPosition
@@ -162,40 +146,27 @@ def waitForResult(data):
 
 def transformCoordinates(pose):
     listener = tf.TransformListener()
-    rate = rospy.Rate(1)
-    print "Started Transform!!" 
+    rate = rospy.Rate(10)
     while not rospy.is_shutdown():
         try:
-            (trans, rot) = listener.lookupTransform('map', 'odom', rospy.Time(0))
+            (trans, rot) = listener.lookupTransform('odom', 'map', rospy.Time(0))
             #print "transformation is: ", trans
             break
         except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
             continue
-        rate.sleep()
-    #print "pose before transformation: ", pose
-    #pose.position.x -= trans[0]
-    #pose.position.y -= trans[1]
-    #print "pose after transformation: ", pose
-    euler = euler_from_quaternion(rot)
-    #print "rotation: ", rot
-    #print "roll: ", euler[0], "pitch: ", euler[1], "yaw: ", euler[2]
-    newX = pose.position.x * math.cos(euler[2]) - pose.position.y * math.sin(euler[2])
-    newY = pose.position.x * math.sin(euler[2]) + pose.position.y * math.cos(euler[2])
-    pose.position.x = newX + trans[0]
-    pose.position.y = newY + trans[1]
-    #print "new x: ", newX , " new y: ", newY
-    #print "pose after transformation: ", pose
-    print "Ended Transform!!"
+   #  print "pose before transformation: ", pose
+    pose.position.x -= trans[0]
+    pose.position.y -= trans[1]
+
 def goToPerson():
     global humanPosition
-    global movingToPerson
     if humanPosition is not None:
         # Person has been found
         print "Found a person, now traveling there"
-        movingToPerson = True
         _travelHere(humanPosition, 'map')
     else:
         global reachedRegion
+        global movingToPerson
         movingToPerson = False
         reachedRegion = False
 
@@ -268,6 +239,7 @@ if __name__=="__main__":
             # begin moving to a person with distance threshold of 0.3 meters
             movingToPerson = True
             minDistance = 0.3
+            print "Starting scan of people"
             scanTime = time.time()
             # Used if we want to scan once region has been reached :)
             # leg_detector_subscriber = rospy.Subscriber("/people_tracker_measurements", PositionMeasurementArray, scanForPeople)

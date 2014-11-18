@@ -1,0 +1,193 @@
+#!/usr/bin/env python
+
+import roslib
+import time
+import rospy
+import actionlib
+from geometry_msgs.msg import *
+from std_msgs.msg import *
+from visualization_msgs.msg import *
+from move_base_msgs.msg import *
+from people_msgs.msg import *
+
+# Global fields, the large amount of them due to lack of
+# ability to put parameters in a callback function
+print "in fields"
+index = 0
+markers = []
+client = actionlib.SimpleActionClient('move_base', MoveBaseAction)
+goal = MoveBaseGoal()
+robot_pose_subscriber = None 
+leg_detector_subscriber = None
+movingToRegion = False
+movingToPerson = False
+reachedRegion = False
+minDistance = 0.5
+scanTime = -1
+
+# Method first called to create all regional markers for
+# debugging purposes
+def createMarkers():
+    _createMarker(.5, 1.25, 0)
+    _createMarker(.5, -1.25, 1)
+    _createMarker(-1.25, 1.35, 2)
+    _createMarker(-1.25, -1.1, 3)
+    _createMarker(-3, 1.5, 4)
+    _createMarker(-3, -1, 5)
+    print "published marker"
+
+def _createMarker(x, y, id):
+    print "Creating marker and publisher"
+    # create a grey box marker
+    marker_publisher = rospy.Publisher('visualization_marker', Marker)
+    marker = Marker(type=Marker.SPHERE, id=id,
+                pose=Pose(Point(x, y, 0), Quaternion(0, 0, 0, 1)),
+                scale=Vector3(1.6, 1.6, 1.6),
+                header=Header(frame_id='map'),
+                color=ColorRGBA(0.0, 1.0, 0.0, 0.6))
+    markers.append(marker)
+    rospy.sleep(.5)
+    marker_publisher.publish(marker) 
+
+"""
+Method used for traveling to both regions and people
+@param pose: the pose to travel to
+@param frameid: the frame of reference that the goal is in terms of
+"""
+def _travelHere(pose,frameid):
+    global goal
+    global robot_pose_subscriber
+    global client
+    goal.target_pose.header.frame_id = frameid
+    goal.target_pose.header.stamp = rospy.Time.now()
+    goal.target_pose.pose = markers[index].pose
+    client.wait_for_server()
+    client.send_goal(goal)
+    # This is for setting the robot's coordinates correctly...2 Possibilities
+    # 1) Robot is going to a region --> we want a coordinate frame_id of /map
+    # 2) Robot is going to a person --> we want a coordinate frame_id of /odom
+    global reachedRegion
+    if reachedRegion:
+        global robot_pose_subscriber
+        # Case for getting the robot's position relative to peron's position (odom)
+        print "Using odom_combined"
+        robot_pose_subscriber = rospy.Subscriber("/robot_pose_ekf/odom_combined", PoseWithCovarianceStamped, waitForResult)
+    else:
+        print "using /robot_pose"
+        robot_pose_subscriber = rospy.Subscriber("/robot_pose", Pose, waitForResult) 
+
+# Callback while traveling to a goal.  Listens until goal
+# has reached it's minDistance away
+def waitForResult(data):
+    global minDistance
+    # Robot's position data depends on if we are looking for a human or region
+    # Human topic for position data: /robot_pose_ekf/odom_combined
+    # Region topic for position data: /robot_pose
+    currentPosition = None
+    global reachedRegion
+    if not reachedRegion:
+        # Navigating to region
+        currentPosition = data.position
+    else:
+        # Navigating to a person
+        currentPosition = data.pose.pose.position
+    goalPosition = goal.target_pose.pose.position
+    distance = calculateDistance(currentPosition,goalPosition)  
+    print "distance = ", distance, " | goal = (", goalPosition.x, ",", goalPosition.y, ",", goalPosition.z, ") position = ", currentPosition.x, ",", currentPosition.y, ",", currentPosition.z, ")"
+    if (distance < minDistance):
+        # Robot has reached it's goal (under our rules of distance)
+        global index
+        global robot_pose_subscriber
+        global client
+        global reachedRegion
+        print "goal reached"
+        client.cancel_goal()        
+        robot_pose_subscriber.unregister()
+        # Set booleans depending on what state robot is in
+        if reachedRegion:
+            # Person finding state
+            global movingToPerson
+            movingToPerson = False
+            reachedRegion = False
+        if not reachedRegion:
+            # Region finding state
+            global index
+            global movingToRegion
+            index = (index + 1) % 6
+            movingToRegion = False
+            reachedRegion = True
+
+# Callback for subscription of current people positions
+def scanForPeople(data):
+    global scanTime
+    curTime = time.time()
+    maxReliability = 0.7
+    pos = None
+    for person in data.people:    
+        if person.reliability > maxReliability:
+            # Done searching for people (new state)
+            maxReliability = person.reliability
+            pos = person.pos
+    # 3 states:
+    # 1) person has been found, begin travel
+    # 2) Scan has gone on too long, move to new region 
+    # 3) Person has not been found, update counter
+    if pos is not None:
+        # Person has been found
+        global leg_detector_suscriber
+        global minDistance
+        global notFoundCount
+        leg_detector_subscriber.unregister()
+        scanTime = -1
+        pose = Pose(Point(pos.x, pos.y, pos.z),Quaternion(0, 0, 0, 1))
+        print "Found a person, now traveling there"
+        _travelHere(pose, 'odom')
+    elif (curTime - scanTime) > 10:
+        # At this point a human has not been found 10 seconds
+        # It is not time to continue to a new region
+        global leg_detector_suscriber
+        global movingToPerson
+        global reachedRegion
+        global index
+        scanTime = -1
+        leg_detector_subscriber.unregister()
+        movingToPerson = False
+        reachedRegion = False
+        print "no person was found in this region, going to next"
+
+
+#Assumes same frame_id
+def calculateDistance(pose1,pose2):
+    return ((pose1.x - pose2.x)**2 + (pose1.y - pose2.y)**2)**.5
+
+if __name__=="__main__":    
+    print "in main"
+    rospy.init_node("regions", anonymous=True)
+    createMarkers()
+
+    # Rate is created in Hz for sleeping
+    # TODO: update rate to a good value
+    r = rospy.Rate(1)
+    while not rospy.is_shutdown():
+        if not (reachedRegion or movingToRegion):
+            # begin moving to a region with distance threshold of 0.5 meters
+            movingToRegion = True
+            minDistance = 0.5
+            print "Traveling to region at index", index
+            _travelHere(markers[index].pose, 'map')
+
+        elif not movingToPerson:
+            # begin moving to a person with distance threshold of 0.3 meters
+            movingToPerson = True
+            minDistance = 0.3
+            print "Starting scan of people"
+            scanTime = time.time()
+            leg_detector_subscriber = rospy.Subscriber("/people_tracker_measurements", PositionMeasurementArray, scanForPeople)
+
+        r.sleep() 
+    rospy.spin()
+
+
+
+
+

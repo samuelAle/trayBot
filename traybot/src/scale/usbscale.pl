@@ -13,7 +13,7 @@ my $waitingflag = 0;
  
 while (1) {
  
-    $data = `cat /dev/hidraw3 | head -c 7`;
+    $data = `cat /dev/hidraw2 | head -c 7`;
  
     my $report = ord(substr($data, 0, 1));
     my $status = ord(substr($data, 1, 1));
@@ -28,34 +28,34 @@ while (1) {
     #print "$report $status $unit $exp $weight\n";
  
     if($report != 0x03) {
-      die "Error reading scale data!\n";
+      #die "Error reading scale data!\n";
+      print "-4\n";
     }
  
     if($status == 0x01) {
-      die "Scale reports FAULT!\n";
+        #die "Scale reports FAULT!\n";
+    	print "-6\n";
     } elsif ($status == 0x02 || $weight == 0) {
-        print "Zero'd...\n";
+        print "0.0\n";
     } elsif ($status == 0x03) {
-        print "Weighing...\n";
+        #print "Weighing...\n";
     } elsif ($status == 0x04) {
-        my $unitName = "units";
-        if($unit == 11) {
-            $unitName = "ounces";
-        } elsif ($unit == 12) {
-            $unitName = "pounds";
-        }
-        print "$weight $unitName\n";
+        print "$weight\n";
     } elsif ($status == 0x05) {
-        iast;
-        print "Scale reports Under Zero...\n";
+        last;
+        print "0.0\n";
     } elsif ($status == 0x06) {
-        print "Scale reports Over Weight!\n";
+        #print "Scale reports Over Weight!\n";
+        print "-1\n";
     } elsif ($status == 0x07) {
-        print "Scale reports Calibration Needed!\n";
+        #print "Scale reports Calibration Needed!\n";
+        print "-2\n";
     } elsif ($status == 0x08) {
-        print "Scale reports Re-zeroing Needed!\n";
+        #print "Scale reports Re-zeroing Needed!\n";
+        print "-3\n";
     } else {
-        die "Unknown status code: $status\n";
+        #die "Unknown status code: $status\n";
+        print "-5\n";
     }
  
 }

@@ -35,7 +35,10 @@ maxReliability = .5
 personCount = 6
 goingHome = False
 atHome = False
+home_subscriber = None
+is_stuck = False
 f = open("/home/turtlebot/scale/scaleData.txt")
+listener = None
 # Method first called to create all regional markers for
 # debugging purposes
 def createMarkers():
@@ -76,7 +79,7 @@ def _travelHere(pose,frameid):
     client.wait_for_server()
     client.send_goal(goal)
     robot_pose_subscriber = rospy.Subscriber("/robot_pose", Pose, waitForResult) 
-    if not reachedRegion or not goingHome:
+    if not reachedRegion and not goingHome:
         print "Starting drive by scan"
         # state going to a region
         global human_pose_subscriber
@@ -100,8 +103,7 @@ def driveByScan(data):
         pose = Pose(Point(pos.x, pos.y, pos.z),Quaternion(0, 0, 0, 1))
         transformCoordinates(pose)
         distance = calculateDistance(goal.target_pose.pose.position, pose.position)
-        print "distance: ", distance
-        _createMarker(pose.position.x, pose.position.y, personCount, 2,.5,1)
+        #print "distance: ", distance _createMarker(pose.position.x, pose.position.y, personCount, 2,.5,1)
         personCount += 1
         if person.reliability > maxReliability and distance < 1.5:
             global humanPosition
@@ -115,6 +117,7 @@ def waitForResult(data):
     global minDistance
     global goal
     global movingToRegion
+    global stuck_counter
     # Robot's position data depends on if we are looking for a human or region
     # Human topic for position data: /robot_pose_ekf/odom_combined
     # Region topic for position data: /robot_pose
@@ -124,9 +127,15 @@ def waitForResult(data):
     goalPosition = goal.target_pose.pose.position
     distance = calculateDistance(currentPosition,goalPosition) 
     global client
-    if client.get_state() == 4 and movingToRegion:
-        client.send_goal(goal)
-        print "previous goal aborted: trying again"
+        
+    if client.get_state() == 4: 
+        if stuck_counter >= 1:
+            rospy.Publisher('is_stuck', String).publish("true")
+        else: 
+            client.send_goal(goal)
+            stuck_counter += 1
+    else
+        stuck_counter = 0   
 
    # print "distance = ", distance, " ********** goal = (", goalPosition.x, ",", goalPosition.y, ",", goalPosition.z, ") ********* position = ", currentPosition.x, ",", currentPosition.y, ",", currentPosition.z, ")"
     if (distance < minDistance):
@@ -135,13 +144,19 @@ def waitForResult(data):
         global robot_pose_subscriber
         global reachedRegion
         global goingHome
+        global home_subscriber
+        global human_pose_subscriber
         client.cancel_goal()        
         robot_pose_subscriber.unregister()
+        human_pose_subscriber.unregister()
         # Set booleans depending on what state robot is in
         if goingHome: #Todo: Add listener to web interface to listen for "Send" command, change atHome to Flase when clicked
             print "reached home"
-            #atHome = True #Set when we have listener
+            atHome = True #Set when we have listener
+            rospy.Publisher('/is_home', String).publish("true")
+            home_subscriber = rospy.Subscriber("/is_home", String, waitForSend)
             goingHome = False	
+            
         elif reachedRegion:
             # Person finding state
             global movingToPerson
@@ -153,26 +168,32 @@ def waitForResult(data):
                 continue
             print "Done waiting, start scale measurements"
             getScaleData()
-            movingToPerson = False
-            reachedRegion = False
+            if not goingHome:
+                movingToPerson = False
+                reachedRegion = False
         else:
             # Region finding state
             global index
-            global human_pose_subscriber
-            human_pose_subscriber.unregister()
             index = (index + 1) % 6
             print "region reached, drive-by complete"
+            global humanPosition
             print "checking scale data"
             getScaleData()
-            print "weight is non-zero"
-            global humanPosition
             if humanPosition is not None:
                 print "humanPosition: ", humanPosition
-            movingToRegion = False
-            reachedRegion = True
+            if not goingHome:
+                movingToRegion = False
+                reachedRegion = True
+
+def waitForSend(data):
+    global home_subscriber
+    print "Operator pressed sendTray button", data
+    if data == "false":
+        home_subscriber.unregister()
+        atHome = False	
 
 def transformCoordinates(pose):
-    listener = tf.TransformListener()
+    global listener
     rate = rospy.Rate(1)
     #print "Started Transform!!" 
     while not rospy.is_shutdown():
@@ -183,7 +204,7 @@ def transformCoordinates(pose):
         except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
             continue
         rate.sleep()
-    #print "pose before transformation: ", pose
+    print "pose before transformation: ", pose
     #pose.position.x -= trans[0]
     #pose.position.y -= trans[1]
     #print "pose after transformation: ", pose
@@ -195,8 +216,9 @@ def transformCoordinates(pose):
     pose.position.x = newX + trans[0]
     pose.position.y = newY + trans[1]
     #print "new x: ", newX , " new y: ", newY
-    #print "pose after transformation: ", pose
+    print "pose after transformation: ", pose
     #print "Ended Transform!!"
+
 def goToPerson():
     global humanPosition
     global movingToPerson
@@ -300,7 +322,7 @@ if __name__=="__main__":
     print "in main"
     rospy.init_node("regions", anonymous=True)
     createMarkers()
-
+    listener = tf.TransformListener()
     # Rate is created in Hz for sleeping
     # TODO: update rate to a good value
     r = rospy.Rate(1)
@@ -324,8 +346,4 @@ if __name__=="__main__":
             goToPerson()    
         r.sleep() 
     rospy.spin()
-
-
-
-
 

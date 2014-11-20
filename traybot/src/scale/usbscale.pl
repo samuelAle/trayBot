@@ -13,7 +13,7 @@ my $waitingflag = 0;
  
 while (1) {
  
-    $data = `cat /dev/hidraw2 | head -c 7`;
+    $data = `cat /dev/hidraw3 | head -c 7`;
  
     my $report = ord(substr($data, 0, 1));
     my $status = ord(substr($data, 1, 1));
@@ -41,8 +41,8 @@ while (1) {
         #print "Weighing...\n";
     } elsif ($status == 0x04) {
         print "$weight\n";
+        #last;
     } elsif ($status == 0x05) {
-        last;
         print "0.0\n";
     } elsif ($status == 0x06) {
         #print "Scale reports Over Weight!\n";

@@ -15,6 +15,7 @@
 var ros;
 var nav;
 var goal;
+var stillStuck;
 var goalMarker;
 var humanArray = [];
   /**
@@ -52,9 +53,10 @@ var humanArray = [];
     });
     teleop.scale = 1;
     //console.log(teleop);
-  }
-  
-  function detectHumans() {
+
+    ///////////////////////////
+    // DETECT HUMANS
+    //////////////////////////
     var detect = new ROSLIB.Topic({
       ros : ros,
       name : '/people_tracker_measurements',
@@ -73,8 +75,45 @@ var humanArray = [];
         }
       } 
     });
-    console.log("Clicked for humans");
+
+    //////////////////////////////////
+    // Listen for when TrayBot reaches home
+    ////////////////////////////////////
+    var home = new ROSLIB.Topic({
+      ros : ros,
+      name : '/is_home',
+      messageType : 'std_msgs/String',
+      throttle_rate : 1000
+    });
+
+    home.subscribe(function(data) {
+      if (data == "true") { 
+        document.getElementById("sendTray").disabled = false;
+      }
+    });
+
+    
+    //////////////////////////////////
+    // Listen for TrayBot in stuck state
+    ////////////////////////////////////
+    stillStuck = false;
+    var stuck = new ROSLIB.Topic({
+      ros : ros,
+      name : '/is_stuck',
+      messageType : 'std_msgs/String',
+      throttle_rate : 1000
+    });
+
+    stuck.subscribe(function(data) {
+      if( data == "true" && !stillStuck) {
+        alert("OMG I'M STUCK!!!!!! \nSAVEEEEEEEEEEEE MEEEEEEEEEEHHHHHHHHHHHHH");
+        document.getElementById("sendTray").disabled = false;
+        stillStuck = true;
+      }
+    });
+
   }
+
   function goHome() {
     // make the cancel button enabled
     document.getElementById("cancel").disabled = false;
@@ -132,9 +171,8 @@ var humanArray = [];
     nav.rootObject.removeChild(goalMarker);
     
     document.getElementById("cancel").disabled = true;
-    
-        
   }
+
   function createMarkers(pose,reliability) {
     var goalMarker = new ROS2D.NavigationArrow({
       size : .5,
@@ -150,6 +188,19 @@ var humanArray = [];
     nav.rootObject.addChild(goalMarker);
     humanArray[humanArray.length] = goalMarker;
 
+  }
+  
+  function sendTray(){ 
+    var home = new ROSLIB.Topic({
+      ros : ros,
+      name : '/is_home',
+      messageType : 'std_msgs/String',
+      throttle_rate : 1000
+    });
+
+    home.publish(new ROSLIB.Message("false"));
+    document.getElementById("sendTray").disabled = true;
+    stillStuck = false;
   }
   
 </script>
@@ -171,7 +222,7 @@ var humanArray = [];
     <img id="imgLegend" src="Legend.png" alt="legend!" >
   </div>
   <div id="buttons">
-    <button onclick="detectHumans()" type="button">Detect Humans</button>
+    <button onclick="sendTray()" type="button" id="sendTray" disabled>Send Tray</button>
     <button onclick="goHome()" type="button" id="gohome">Go Home</button>
     <button onclick="cancelHome()" type="button" id="cancel" disabled>Cancel Going Home</button>
   </div>

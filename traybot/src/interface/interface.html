@@ -24,7 +24,7 @@ var humanArray = [];
   function init() {
     // Connect to ROS.
     ros = new ROSLIB.Ros({
-      url : 'ws://leatherback.cs.washington.edu:9090'
+      url : 'ws://chester.cs.washington.edu:9090'
       //url : 'ws://localhost:9090'
     });
 
@@ -87,7 +87,8 @@ var humanArray = [];
     });
 
     home.subscribe(function(data) {
-      if (data == "true") { 
+      console.log("Received is_home" + data.data);
+      if (data.data == "true") {
         document.getElementById("sendTray").disabled = false;
       }
     });
@@ -105,7 +106,7 @@ var humanArray = [];
     });
 
     stuck.subscribe(function(data) {
-      if( data == "true" && !stillStuck) {
+      if( data.data == "true" && !stillStuck) {
         alert("OMG I'M STUCK!!!!!! \nSAVEEEEEEEEEEEE MEEEEEEEEEEHHHHHHHHHHHHH");
         document.getElementById("sendTray").disabled = false;
         stillStuck = true;
@@ -198,7 +199,7 @@ var humanArray = [];
       throttle_rate : 1000
     });
 
-    home.publish(new ROSLIB.Message("false"));
+    home.publish(new ROSLIB.Message({data : "false"}));
     document.getElementById("sendTray").disabled = true;
     stillStuck = false;
   }
@@ -222,7 +223,7 @@ var humanArray = [];
     <img id="imgLegend" src="Legend.png" alt="legend!" >
   </div>
   <div id="buttons">
-    <button onclick="sendTray()" type="button" id="sendTray" disabled>Send Tray</button>
+    <button onclick="sendTray()" type="button" id="sendTray">Send Tray</button>
     <button onclick="goHome()" type="button" id="gohome">Go Home</button>
     <button onclick="cancelHome()" type="button" id="cancel" disabled>Cancel Going Home</button>
   </div>

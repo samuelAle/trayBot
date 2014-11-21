@@ -14,11 +14,11 @@ my $waitingflag = 0;
 while (1) {
     my $hidraw;
     my $command;
-    $hidraw = `dmesg | grep -E '.*hidraw.*Stamps.*' | tail --lines=1 | grep -Po 'hidraw[0-9]' | tr -d '\n'`;
+    $hidraw = `dmesg | grep -E '.*hidraw.*Stamps.*' | tail --lines=1 | grep -Po 'hidraw[0-9]'`;
     $command = "cat /dev/" . $hidraw . " | head -c 7"; 
+    print "$command";
     $data = `$command`; 
 
-    #print "$command";
     #print "hidraw = $hidraw\n";
     #$data = `cat /dev/hidraw3 | head -c 7`;
 

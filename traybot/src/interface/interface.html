@@ -24,7 +24,7 @@ var humanArray = [];
   function init() {
     // Connect to ROS.
     ros = new ROSLIB.Ros({
-      url : 'ws://chester.cs.washington.edu:9090'
+      url : 'ws://leatherback.cs.washington.edu:9090'
       //url : 'ws://localhost:9090'
     });
 
@@ -55,12 +55,12 @@ var humanArray = [];
     //console.log(teleop);
 
     ///////////////////////////
-    // DETECT HUMANS
+    // detect humans
     //////////////////////////
     var detect = new ROSLIB.Topic({
       ros : ros,
-      name : '/people_tracker_measurements',
-      messageType : 'people_msgs/PositionMeasurementArray',
+      name : '/visualization_marker',
+      messagetype : 'visualization_msgs/Marker',
       throttle_rate : 1000
     });
 
@@ -68,11 +68,10 @@ var humanArray = [];
       for (var i = 0; i < humanArray.length; i++) {
         nav.rootObject.removeChild(humanArray[i]);
       }
-      for(var i = 0; i < data.people.length;i++) {
-        if(data.people[i].reliability >= 0.25) {
-          createMarkers(data.people[i].pos,data.people[i].reliability);
-          console.log(data.people[i].pos);
-        }
+      var headerData = data.header.frame_id + ""
+      console.log(headerData)
+      if(headerData.search("map") != -1) {
+        createMarkers(data.pose.position,1); 
       } 
     });
 
@@ -181,7 +180,7 @@ var humanArray = [];
       fillColor : createjs.Graphics.getRGB(154, 64, 255, reliability),
       pulse : true
     });
-    goalMarker.x = -pose.x;
+    goalMarker.x = pose.x;
     goalMarker.y = pose.y;
     goalMarker.rotation = 0;
     goalMarker.scaleX = 1.0;
@@ -198,7 +197,12 @@ var humanArray = [];
       messageType : 'std_msgs/String',
       throttle_rate : 1000
     });
-
+    var d = new Date();
+    var time = d.getTime();
+    home.publish(new ROSLIB.Message({data : "false"}));
+    while(d.getTime() - time < 0.5) {
+        continue;
+    } 
     home.publish(new ROSLIB.Message({data : "false"}));
     document.getElementById("sendTray").disabled = true;
     stillStuck = false;

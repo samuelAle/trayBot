@@ -31,7 +31,7 @@ minDistance = 0.5
 scanTime = -1
 human_pose_subscriber = None
 humanPosition = None
-maxReliability = .7
+maxReliability = .8
 personCount = 6
 goingHome = False
 atHome = True
@@ -39,29 +39,33 @@ home_subscriber = None
 is_stuck = False
 f = open("/home/turtlebot/scale/scaleData.txt")
 transform = None
+stuck_counter = 0
+stuckDistance = 0
+stuckTime = time.time()
 # Method first called to create all regional markers for
 # debugging purposes
 def createMarkers():
-    _createMarker(.5, 1.25, 0,0,1.6,0)
-    _createMarker(.5, -1.25, 1,0,1.6,0)
-    _createMarker(-1.25, 1.35, 2,0,1.6,0)
-    _createMarker(-1.25, -1.1, 3,0,1.6,0)
-    _createMarker(-3, 1.5, 4,0,1.6,0)
-    _createMarker(-3, -1, 5,0,1.6,0)
+    _createMarker(.5, 1.25, 0,0,1.6,0,True)
+    _createMarker(.5, -1.25, 1,0,1.6,0,True)
+    _createMarker(-1.25, 1.35, 2,0,1.6,0,True)
+    _createMarker(-1.25, -1.1, 3,0,1.6,0,True)
+    _createMarker(-3, 1.5, 4,0,1.6,0,True)
+    _createMarker(-3, -1, 5,0,1.6,0,True)
     print "published marker"
 
-def _createMarker(x, y, id,lifetime,scale,red):
+def _createMarker(x, y, id,lifetime,scale,red,shouldSleep):
     #print "Creating marker and publisher"
-    # create a grey box marker
+    # create a grey box marker 
     marker_publisher = rospy.Publisher('visualization_marker', Marker)
     marker = Marker(type=Marker.SPHERE, id=id,
                 pose=Pose(Point(x, y, 0), Quaternion(0, 0, 0, 1)),
                 scale=Vector3(scale,scale,scale),
-                header=Header(frame_id='map'),
+                header=Header(frame_id='map',stamp = rospy.Time.now()),
                 lifetime = rospy.Duration(lifetime),
                 color=ColorRGBA(red, 0.6, 0.3, 0.6))
     markers.append(marker)
-    rospy.sleep(.5)
+    if shouldSleep:
+        rospy.sleep(.5)
     marker_publisher.publish(marker) 
 
 """
@@ -73,6 +77,8 @@ def _travelHere(pose,frameid):
     global goal
     global robot_pose_subscriber
     global client
+    global stuckTime
+    stuckTime = time.time()
     goal.target_pose.header.frame_id = frameid
     goal.target_pose.header.stamp = rospy.Time.now()
     goal.target_pose.pose = pose
@@ -85,7 +91,7 @@ def _travelHere(pose,frameid):
         global human_pose_subscriber
         global maxReliability
         global humanPosition
-        maxReliability = 0.5
+        maxReliability = 0.8
         humanPosition = None
         human_pose_subscriber = rospy.Subscriber("/people_tracker_measurements", PositionMeasurementArray, driveByScan)
  
@@ -106,7 +112,7 @@ def driveByScan(data):
         transformCoordinates(pose)
         distance = calculateDistance(goal.target_pose.pose.position, pose.position)
         #print "distance: ", distance
-        _createMarker(pose.position.x, pose.position.y, personCount, 2,.5,1)
+        _createMarker(pose.position.x, pose.position.y, personCount, 2,.5,1,False)
         personCount += 1
         if distance < 2:
             global humanPosition
@@ -129,13 +135,35 @@ def waitForResult(data):
     global atHome
     global goingHome
     global movingToPerson
+    global stuckDistance
+    global stuckTime
+    global robot_pose_subscriber
     currentPosition = data.position
+    global index
     goalPosition = goal.target_pose.pose.position
     distance = calculateDistance(currentPosition,goalPosition) 
     global client
+    # Check if robot is stuck, looking at time passed w/o moving
+    now = time.time()
+    stuckDifference = abs(distance - stuckDistance)
+    stuck = False
+    if stuckDifference > 0.02:
+        stuckDistance = distance
+        stuckTime = time.time()
+    else:
+        if now - stuckTime > 10:
+            # Robot is stuck
+            print "haven't moved in 10 seconds, stuck :("
+            stuck = True
     print "distance: " , distance 
-    if client.get_state() > 3:
-        print "I'm stuck like a dumbass" 
+    if client.get_state() > 3 or stuck:
+        print "I'm stuck like a dumbass"
+        if not movingToPerson: 
+            index = (index + 1) % 6
+        robot_pose_subscriber.unregister()
+        movingToPerson = False
+        goingHome = False
+        reachedRegion = False
         if stuck_counter >= 1:
             currentTime = time.time()
             r = rospy.Publisher('/is_stuck', String)
@@ -147,25 +175,18 @@ def waitForResult(data):
             print "published stuck, changing to home state"
             atHome = True
             movingToRegion = False
-            goingHome = False
-            movingToPerson = False
-            reachedRegion = False
             stuck_counter = 0
-        else: 
-            print "retrying, incrementing stuck count ", stuck_counter
-            client.send_goal(goal)
+        else:
+            print "sending to new region, incrementing stuck count ", stuck_counter
+            stuckDistance = distance
+            movingToRegion = True
+            _travelHere(markers[index].pose, 'map')
             stuck_counter += 1
-
    # print "distance = ", distance, " ********** goal = (", goalPosition.x, ",", goalPosition.y, ",", goalPosition.z, ") ********* position = ", currentPosition.x, ",", currentPosition.y, ",", currentPosition.z, ")"
     if (distance < minDistance):
         # Robot has reached it's goal (under our rules of distance)
-        global index
-        global robot_pose_subscriber
-        global reachedRegion
-        global goingHome
         global home_subscriber
         global human_pose_subscriber
-        global atHome
         client.cancel_goal()        
         robot_pose_subscriber.unregister()
         human_pose_subscriber.unregister()
@@ -186,11 +207,10 @@ def waitForResult(data):
             goingHome = False	
         elif reachedRegion:
             # Person finding state
-            global movingToPerson
             print "person reached"
             print "waiting"
             curTime = time.time()
-            while time.time() - curTime < 5:
+            while time.time() - curTime < 2:
                 # Waiting
                 continue
             print "Done waiting, start scale measurements"
@@ -200,7 +220,6 @@ def waitForResult(data):
                 reachedRegion = False
         else:
             # Region finding state
-            global index
             index = (index + 1) % 6
             print "region reached, drive-by complete"
             global humanPosition
@@ -262,17 +281,17 @@ def goToPerson():
         # Person has been found
         print "I Found a person, now traveling there"
         print "Before position is: ", humanPosition
-        if humanPosition.position.x > goal.target_pose.pose.x:
-            humanPosition.position.x -= 0.4
+        if humanPosition.position.x > goal.target_pose.pose.position.x:
+            humanPosition.position.x -= 0.25
         else:
-            humanPosition.position.x += 0.4
-        if humanPosition.position.y > goal.target_pose.pose.y:
-            humanPosition.position.y -= 0.4
+            humanPosition.position.x += 0.25
+        if humanPosition.position.y > goal.target_pose.pose.position.y:
+            humanPosition.position.y -= 0.25
         else:
-            humanPosition.position.y += 0.4
+            humanPosition.position.y += 0.25
         personCount += 1
         print "After position is: ", humanPosition
-        _createMarker(humanPosition.position.x, humanPosition.position.y, personCount, 5,.5,.1)
+        _createMarker(humanPosition.position.x, humanPosition.position.y, personCount, 5,.5,.1,True)
         movingToPerson = True
         _travelHere(humanPosition, 'map')
     else:
@@ -340,7 +359,7 @@ def getScaleData():
         goHome()
         return
     r = rospy.Rate(5)
-    while incrementer < 4: 
+    while incrementer < 3: 
         reading = f.readline()
         #print "reading: ", reading
         if not reading == '':

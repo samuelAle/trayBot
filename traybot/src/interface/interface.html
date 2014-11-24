@@ -24,7 +24,7 @@ var humanArray = [];
   function init() {
     // Connect to ROS.
     ros = new ROSLIB.Ros({
-      url : 'ws://leatherback.cs.washington.edu:9090'
+      url : 'ws://chester.cs.washington.edu:9090'
       //url : 'ws://localhost:9090'
     });
 
@@ -57,24 +57,24 @@ var humanArray = [];
     ///////////////////////////
     // detect humans
     //////////////////////////
+    /*
     var detect = new ROSLIB.Topic({
       ros : ros,
       name : '/visualization_marker',
       messagetype : 'visualization_msgs/Marker',
       throttle_rate : 1000
     });
-
     detect.subscribe(function(data) {
       for (var i = 0; i < humanArray.length; i++) {
         nav.rootObject.removeChild(humanArray[i]);
       }
       var headerData = data.header.frame_id + ""
-      console.log(headerData)
+      //console.log(headerData)
       if(headerData.search("map") != -1) {
         createMarkers(data.pose.position,1); 
       } 
     });
-
+    */
     //////////////////////////////////
     // Listen for when TrayBot reaches home
     ////////////////////////////////////
@@ -86,7 +86,7 @@ var humanArray = [];
     });
 
     home.subscribe(function(data) {
-      console.log("Received is_home" + data.data);
+      //console.log("Received is_home" + data.data);
       if (data.data == "true") {
         document.getElementById("sendTray").disabled = false;
       }
@@ -199,10 +199,6 @@ var humanArray = [];
     });
     var d = new Date();
     var time = d.getTime();
-    home.publish(new ROSLIB.Message({data : "false"}));
-    while(d.getTime() - time < 0.5) {
-        continue;
-    } 
     home.publish(new ROSLIB.Message({data : "false"}));
     document.getElementById("sendTray").disabled = true;
     stillStuck = false;

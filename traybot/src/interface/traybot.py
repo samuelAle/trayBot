@@ -45,12 +45,12 @@ stuckTime = time.time()
 # Method first called to create all regional markers for
 # debugging purposes
 def createMarkers():
-    _createMarker(.5, 1.25, 0,0,1.6,0,True)
+    #_createMarker(.5, 1.25, 0,0,1.6,0,True)
     _createMarker(.5, -1.25, 1,0,1.6,0,True)
     _createMarker(-1.25, 1.35, 2,0,1.6,0,True)
     _createMarker(-1.25, -1.1, 3,0,1.6,0,True)
-    _createMarker(-3, 1.5, 4,0,1.6,0,True)
-    _createMarker(-3, -1, 5,0,1.6,0,True)
+    #_createMarker(-3, 1.5, 4,0,1.6,0,True)
+    #_createMarker(-3, -1, 5,0,1.6,0,True)
     print "published marker"
 
 def _createMarker(x, y, id,lifetime,scale,red,shouldSleep):
@@ -114,7 +114,7 @@ def driveByScan(data):
         #print "distance: ", distance
         _createMarker(pose.position.x, pose.position.y, personCount, 2,.5,1,False)
         personCount += 1
-        if distance < 2:
+        if distance < 1.5:
             global humanPosition
             maxReliability = person.reliability
             humanPosition = pose
@@ -139,6 +139,7 @@ def waitForResult(data):
     global stuckTime
     global robot_pose_subscriber
     currentPosition = data.position
+    global human_pose_subscriber
     global index
     goalPosition = goal.target_pose.pose.position
     distance = calculateDistance(currentPosition,goalPosition) 
@@ -151,7 +152,7 @@ def waitForResult(data):
         stuckDistance = distance
         stuckTime = time.time()
     else:
-        if now - stuckTime > 10:
+        if now - stuckTime > 12:
             # Robot is stuck
             print "haven't moved in 10 seconds, stuck :("
             stuck = True
@@ -159,7 +160,7 @@ def waitForResult(data):
     if client.get_state() > 3 or stuck:
         print "I'm stuck like a dumbass"
         if not movingToPerson: 
-            index = (index + 1) % 6
+            index = (index + 1) % 3
         robot_pose_subscriber.unregister()
         movingToPerson = False
         goingHome = False
@@ -176,17 +177,19 @@ def waitForResult(data):
             atHome = True
             movingToRegion = False
             stuck_counter = 0
+            robot_pose_subscriber.unregister()
+            human_pose_subscriber.unregister()
         else:
             print "sending to new region, incrementing stuck count ", stuck_counter
             stuckDistance = distance
             movingToRegion = True
+            atHome = False
             _travelHere(markers[index].pose, 'map')
             stuck_counter += 1
    # print "distance = ", distance, " ********** goal = (", goalPosition.x, ",", goalPosition.y, ",", goalPosition.z, ") ********* position = ", currentPosition.x, ",", currentPosition.y, ",", currentPosition.z, ")"
     if (distance < minDistance):
         # Robot has reached it's goal (under our rules of distance)
         global home_subscriber
-        global human_pose_subscriber
         client.cancel_goal()        
         robot_pose_subscriber.unregister()
         human_pose_subscriber.unregister()
@@ -220,7 +223,7 @@ def waitForResult(data):
                 reachedRegion = False
         else:
             # Region finding state
-            index = (index + 1) % 6
+            index = (index + 1) % 3
             print "region reached, drive-by complete"
             global humanPosition
             print "checking scale data"
@@ -373,6 +376,7 @@ def getScaleData():
         r.sleep()
     if firstReading <= 0.5:
         goHome()
+    print "Done Reading Scale"
     
     
    
@@ -387,7 +391,7 @@ def goHome():
     reachedRegion = False
     movingToRegion = False
     print "going home"
-    _travelHere(markers[0].pose,'map')
+    _travelHere(markers[2].pose,'map')
 
 if __name__=="__main__":    
     print "in main"

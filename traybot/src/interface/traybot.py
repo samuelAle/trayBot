@@ -6,13 +6,17 @@ import rospy
 import actionlib
 import tf
 import math
+import random
 import geometry_msgs.msg
+import os, sys
 from geometry_msgs.msg import *
 from std_msgs.msg import *
 from visualization_msgs.msg import *
 from move_base_msgs.msg import *
 from people_msgs.msg import *
 from tf.transformations import *
+from sound_play.msg import SoundRequest
+from sound_play.libsoundplay import SoundClient
 
 
 # Global fields, the large amount of them due to lack of
@@ -42,15 +46,29 @@ transform = None
 stuck_counter = 0
 stuckDistance = 0
 stuckTime = time.time()
+soundHandler = None
+jokes = []
+
+
 # Method first called to create all regional markers for
 # debugging purposes
 def createMarkers():
-    #_createMarker(.5, 1.25, 0,0,1.6,0,True)
-    _createMarker(.5, -1.25, 1,0,1.6,0,True)
-    _createMarker(-1.25, 1.35, 2,0,1.6,0,True)
-    _createMarker(-1.25, -1.1, 3,0,1.6,0,True)
-    #_createMarker(-3, 1.5, 4,0,1.6,0,True)
-    #_createMarker(-3, -1, 5,0,1.6,0,True)
+    
+    _createMarker(.5, 1.25, 0,0,3,0,True)
+    _createMarker(.5, -1.25, 1,0,3,0,True)
+    _createMarker(-1.25, 1.35, 2,0,3,0,True)
+    _createMarker(-1.25, -1.1, 3,0,3,0,True)
+    _createMarker(-3, 1.5, 4,0,3,0,True)
+    _createMarker(-3, -1, 5,0,3,0,True)
+    """
+    ###############################################
+    #Demo Markers
+    ###############################################
+    _createMarker(0.5,0,0,0,1.6,0,True)
+    _createMarker(-1.15,1.3,1,0,1.6,0,True)
+    _createMarker(-3,0.3,2,0,1.6,0,True)
+    _createMarker(-1.4,-1,3,0,1.6,0,True)
+    """
     print "published marker"
 
 def _createMarker(x, y, id,lifetime,scale,red,shouldSleep):
@@ -78,6 +96,7 @@ def _travelHere(pose,frameid):
     global robot_pose_subscriber
     global client
     global stuckTime
+    global soundHandler
     stuckTime = time.time()
     goal.target_pose.header.frame_id = frameid
     goal.target_pose.header.stamp = rospy.Time.now()
@@ -86,6 +105,7 @@ def _travelHere(pose,frameid):
     client.send_goal(goal)
     robot_pose_subscriber = rospy.Subscriber("/robot_pose", Pose, waitForResult) 
     if not reachedRegion and not goingHome:
+        # soundHandler.say("Scanning for people")
         print "Starting drive by scan"
         # state going to a region
         global human_pose_subscriber
@@ -101,6 +121,12 @@ def driveByScan(data):
     global maxReliability
     global movingToPerson
     global reachedRegion
+    global human_pose_subscriber
+    global robot_post_subscriber
+    global stuck_counter
+    global client
+    global humanPosition
+    global movingToRegion
     for person in data.people:
         if movingToPerson or reachedRegion:
             return
@@ -115,10 +141,22 @@ def driveByScan(data):
         _createMarker(pose.position.x, pose.position.y, personCount, 2,.5,1,False)
         personCount += 1
         if distance < 1.5:
-            global humanPosition
+             
             maxReliability = person.reliability
             humanPosition = pose
             print "found this person's reliability: ", person.reliability
+            
+            client.cancel_goal()        
+            robot_pose_subscriber.unregister()
+            human_pose_subscriber.unregister()
+            stuck_counter = 0
+            updateTransform()
+     
+           
+            print "humanPosition: ", humanPosition
+            movingToRegion = False
+            reachedRegion = True
+            break
 
 # Callback while traveling to a goal.  Listens until goal
 # has reached it's minDistance away
@@ -130,7 +168,6 @@ def waitForResult(data):
     # Robot's position data depends on if we are looking for a human or region
     # Human topic for position data: /robot_pose_ekf/odom_combined
     # Region topic for position data: /robot_pose
-    #currentPosition = None
     global reachedRegion
     global atHome
     global goingHome
@@ -144,6 +181,8 @@ def waitForResult(data):
     goalPosition = goal.target_pose.pose.position
     distance = calculateDistance(currentPosition,goalPosition) 
     global client
+    global soundHandler
+    global jokes
     # Check if robot is stuck, looking at time passed w/o moving
     now = time.time()
     stuckDifference = abs(distance - stuckDistance)
@@ -152,20 +191,20 @@ def waitForResult(data):
         stuckDistance = distance
         stuckTime = time.time()
     else:
-        if now - stuckTime > 12:
+        if now - stuckTime > 15:
             # Robot is stuck
-            print "haven't moved in 10 seconds, stuck :("
+            print "haven't moved in 15 seconds, stuck :("
             stuck = True
     print "distance: " , distance 
     if client.get_state() > 3 or stuck:
         print "I'm stuck like a dumbass"
         if not movingToPerson: 
-            index = (index + 1) % 3
+            index = (index + 1) % 6
         robot_pose_subscriber.unregister()
         movingToPerson = False
         goingHome = False
         reachedRegion = False
-        if stuck_counter >= 1:
+        if stuck_counter >= 1 or goingHome:
             currentTime = time.time()
             r = rospy.Publisher('/is_stuck', String)
             str = "true"
@@ -174,6 +213,7 @@ def waitForResult(data):
                 continue
             r.publish(str)
             print "published stuck, changing to home state"
+            soundHandler.say("I'm stuck, come help me human")
             atHome = True
             movingToRegion = False
             stuck_counter = 0
@@ -181,12 +221,13 @@ def waitForResult(data):
             human_pose_subscriber.unregister()
         else:
             print "sending to new region, incrementing stuck count ", stuck_counter
+            soundHandler.say("Please move aside, I am stuck")
+            rospy.sleep(2)
             stuckDistance = distance
             movingToRegion = True
             atHome = False
             _travelHere(markers[index].pose, 'map')
             stuck_counter += 1
-   # print "distance = ", distance, " ********** goal = (", goalPosition.x, ",", goalPosition.y, ",", goalPosition.z, ") ********* position = ", currentPosition.x, ",", currentPosition.y, ",", currentPosition.z, ")"
     if (distance < minDistance):
         # Robot has reached it's goal (under our rules of distance)
         global home_subscriber
@@ -197,6 +238,8 @@ def waitForResult(data):
         updateTransform()
         # Set booleans depending on what state robot is in
         if goingHome: #Todo: Add listener to web interface to listen for "Send" command, change atHome to Flase when clicked
+            soundHandler.say("I need to be refilled")
+            rospy.sleep(2)
             print "reached home"
             atHome = True #Set when we have listener
             r = rospy.Publisher('/is_home', String)
@@ -206,28 +249,30 @@ def waitForResult(data):
             while time.time() - currentTime < 0.5:
                 continue
             r.publish(str)
-            #home_subscriber = rospy.Subscriber("/is_home", String, waitForSend)
             goingHome = False	
         elif reachedRegion:
+            soundHandler.say("Please help yourself while I tell you a joke")
             # Person finding state
             print "person reached"
             print "waiting"
-            curTime = time.time()
-            while time.time() - curTime < 2:
-                # Waiting
-                continue
+            rospy.sleep(3)
             print "Done waiting, start scale measurements"
+            jokeIndex = random.randint(0, len(jokes) - 1)
+            joke = jokes[jokeIndex]
+            soundHandler.say(joke[0])
             getScaleData()
             if not goingHome:
+                soundHandler.say(joke[1])
+                rospy.sleep(3)
+                soundHandler.say("ha ha ha, ha ha ha, ha ha ha, ha ha ha, ha ha ha")
+                print "now going to region finding state"
                 movingToPerson = False
                 reachedRegion = False
         else:
             # Region finding state
-            index = (index + 1) % 3
+            index = (index + 1) % 6
             print "region reached, drive-by complete"
             global humanPosition
-            print "checking scale data"
-            getScaleData()
             if humanPosition is not None:
                 print "humanPosition: ", humanPosition
             if not goingHome:
@@ -237,9 +282,11 @@ def waitForResult(data):
 def waitForSend(data):
     global home_subscriber
     global atHome
+    global soundHandler
     print "Operator pressed sendTray button", data
     if data.data == "false":
         print "Sending robot out"
+        soundHandler.say("Beginning to serve")
         atHome = False
         home_subscriber.unregister()
         home_subscriber = None
@@ -280,18 +327,20 @@ def goToPerson():
     global movingToPerson
     global personCount
     global goal
+    global soundHandler
     if humanPosition is not None:
         # Person has been found
+        soundHandler.say("Going to a person now")
         print "I Found a person, now traveling there"
         print "Before position is: ", humanPosition
         if humanPosition.position.x > goal.target_pose.pose.position.x:
-            humanPosition.position.x -= 0.25
+            humanPosition.position.x -= 0.35
         else:
-            humanPosition.position.x += 0.25
+            humanPosition.position.x += 0.35
         if humanPosition.position.y > goal.target_pose.pose.position.y:
-            humanPosition.position.y -= 0.25
+            humanPosition.position.y -= 0.35
         else:
-            humanPosition.position.y += 0.25
+            humanPosition.position.y += 0.35
         personCount += 1
         print "After position is: ", humanPosition
         _createMarker(humanPosition.position.x, humanPosition.position.y, personCount, 5,.5,.1,True)
@@ -307,17 +356,6 @@ def scanForPeople(data):
     global scanTime
     global humanPosition
     curTime = time.time()
-#   maxReliability = 0.7
-#   pos = None
-#   for person in data.people:    
-#       if person.reliability > maxReliability:
-#           # Done searching for people (new state)
-#           maxReliability = person.reliability
-#           pos = person.pos
-    # 3 states:
-    # 1) person has been found, begin travel
-    # 2) Scan has gone on too long, move to new region 
-    # 3) Person has not been found, update counter
     if humanPosition is not None:
         # Person has been found
         global leg_detector_suscriber
@@ -332,19 +370,6 @@ def scanForPeople(data):
         global movingToPerson
         movingToPerson = False
         reachedRegion = False
-#   elif (curTime - scanTime) > 10:
-#       # At this point a human has not been found 10 seconds
-#       # It is not time to continue to a new region
-#       global leg_detector_suscriber
-#       global movingToPerson
-#       global reachedRegion
-#       global index
-#       scanTime = -1
-#       leg_detector_subscriber.unregister()
-#       movingToPerson = False
-#       reachedRegion = False
-#       print "no person was found in this region, going to next"
-
 
 #Assumes same frame_id
 def calculateDistance(pose1,pose2):
@@ -359,6 +384,7 @@ def getScaleData():
         line = f.readline() 
     firstReading = float(previousLine)
     if firstReading <= 0.5:  #Can change to another threshold
+        rospy.sleep(3)
         goHome()
         return
     r = rospy.Rate(5)
@@ -381,7 +407,10 @@ def getScaleData():
     
    
 def goHome():
-    #ToDo
+    global soundHandler
+    rospy.sleep(2)
+    soundHandler.say("Actually, I need to go home, excuse me party people")
+    rospy.sleep(3)
     global goingHome
     global movingToPerson
     global reachedRegion
@@ -391,12 +420,30 @@ def goHome():
     reachedRegion = False
     movingToRegion = False
     print "going home"
-    _travelHere(markers[2].pose,'map')
+    _travelHere(markers[3].pose,'map')
+
+def initializeJokes():
+    global jokes
+    jokes.append(("What is Bruce Lees favorite drink", "Wataaaaah"))
+    jokes.append(("How does NASA organize their company parties", "they plan it"))
+    jokes.append(("What kind of shoes to ninjas wear", "sneakers"))
+    jokes.append(("time flies like an arrow", "fruit flies like banana"))
+    jokes.append(("why did the lifeguard not save the hippie", "because he was too far out man"))
+    jokes.append(("i was wondering why the baseball was getting bigger", "then it hit me"))
+    jokes.append(("How did the hipster burn his tongue", "he drank his coffee before it was cool"))
+    jokes.append(("I started a musical group called nine hundred and ninety nine megabytes", "we haven't gotten a gig yet"))
+    jokes.append(("A sequel queer E goes in to a bar walks up to two tables an asks", "can I join you"))
+    jokes.append(("how many programmers does it take to change a lightbulb", "none, that's a hardware problem"))
+
 
 if __name__=="__main__":    
     print "in main"
     rospy.init_node("regions", anonymous=True)
+    soundHandler = SoundClient()
+    rospy.sleep(1)
+    soundHandler.stopAll()
     createMarkers()
+    initializeJokes()
     updateTransform()
     # Rate is created in Hz for sleeping
     # TODO: update rate to a good value
@@ -417,7 +464,7 @@ if __name__=="__main__":
         elif not movingToPerson and reachedRegion:
             # begin moving to a person with distance threshold of 0.3 meters
             movingToPerson = True
-            minDistance = 0.5
+            minDistance = 0.35
             scanTime = time.time()
             # Used if we want to scan once region has been reached :)
             # leg_detector_subscriber = rospy.Subscriber("/people_tracker_measurements", PositionMeasurementArray, scanForPeople)

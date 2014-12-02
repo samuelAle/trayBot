@@ -24,7 +24,7 @@ var humanArray = [];
   function init() {
     // Connect to ROS.
     ros = new ROSLIB.Ros({
-      url : 'ws://chester.cs.washington.edu:9090'
+      url : 'ws://leatherback.cs.washington.edu:9090'
       //url : 'ws://localhost:9090'
     });
 
@@ -224,8 +224,8 @@ var humanArray = [];
   </div>
   <div id="buttons">
     <button onclick="sendTray()" type="button" id="sendTray">Send Tray</button>
-    <button onclick="goHome()" type="button" id="gohome">Go Home</button>
-    <button onclick="cancelHome()" type="button" id="cancel" disabled>Cancel Going Home</button>
+    <!--<button onclick="goHome()" type="button" id="gohome">Go Home</button>
+    <button onclick="cancelHome()" type="button" id="cancel" disabled>Cancel Going Home</button>-->
   </div>
   <div id="map"></div>
 </body>

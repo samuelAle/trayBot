@@ -21,6 +21,10 @@ Some things we would like to add is support for multiple TrayBots in the same lo
 having configureable settings for the user to be able to define their own jokes and easily
 redefine the TrayBot's internal map of the area its in.
 
+#####Click for a short presentation of a functional TrayBot
+<a href="http://www.youtube.com/watch?v=yKJAJsvxj6k" target="blank"><img src="https://i.ytimg.com/vi/yKJAJsvxj6k/maxresdefault.jpg"
+alt="TrayBot Presentation" width="240" height="180" border="10" /></a>
+
 ## Components
 - TurtleBot 
 - Kinect

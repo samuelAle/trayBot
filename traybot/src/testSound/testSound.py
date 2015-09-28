@@ -35,7 +35,7 @@ if __name__ == '__main__':
     print 'plugging badly'
     soundhandle.play(SoundRequest.NEEDS_PLUGGING_BADLY)
     sleep(2)
-    soundhandle.say("TESTING THIS                            MOTHER FUCKER")
+    soundhandle.say("TESTING THIS                            LATENCY")
     sleep(3)
     s3 = soundhandle.voiceSound("Testing the new A P I")
 

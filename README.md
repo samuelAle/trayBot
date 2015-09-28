@@ -36,7 +36,7 @@ of robotics and give students implementation experience with a state-of-the-art
 mobile robot using the robot programming framework ROS (Robot Operating System). 
 For more information, please visit the course [website](https://sites.google.com/site/cse481au14/)
 
-## Members:
-- [Samuel Alebachew](www.samuelale.com)
+## Contributors:
+- [Samuel Alebachew](http://www.samuelale.com)
 - Andy Fu
 - Seth Hampson
